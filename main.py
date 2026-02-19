@@ -7,25 +7,17 @@ CHAT_ID = os.environ.get('CHAT_ID')
 SN = "E0A25C000919"
 
 def send(text):
+    # Ограничим длину текста, чтобы Telegram не ругался
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                  json={"chat_id": CHAT_ID, "text": text})
+                  json={"chat_id": CHAT_ID, "text": str(text)[:4000]})
 
-def get_data():
+def get_raw_data():
     try:
-        # Пытаемся получить данные
+        # Получаем абсолютно все данные от инвертора
         res = requests.get(f"http://api.dessmonitor.com/v1/device/getDeviceData?sn={SN}").json()
-        data = res.get('datList', res) # Проверяем вложенность
-        
-        # Ищем вольтаж (пробуем разные ключи)
-        grid = data.get('v_grid') or data.get('u_a') or data.get('vgrid', 220)
-        
-        # Ищем батарею (пробуем разные ключи)
-        battery = data.get('soc') or data.get('capacity') or data.get('battery_soc', 0)
-        
-        return grid, battery
+        return res
     except Exception as e:
-        print(f"Ошибка получения данных: {e}")
-        return None, None
+        return f"Ошибка связи: {e}"
 
 def check_messages():
     try:
@@ -35,27 +27,17 @@ def check_messages():
             text = msg.get('text', '').lower()
             
             if text == "статус":
-                v, bat = get_data()
-                send(f"📊 Состояние в оя:\n⚡️ Сеть: {v}V\n🔋 Батарея: {bat}%")
-                # Подтверждаем получение, чтобы не спамить
+                raw_data = get_raw_data()
+                # Бот пришлет "сырые" данные, чтобы мы нашли нужные ключи
+                send(f"🔍 Ищу данные в оя...\nОтвет сервера: {raw_data}")
+                
+                # Подтверждаем, чтобы не повторять ответ
                 requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset={updates['result'][0]['update_id'] + 1}")
     except:
         pass
 
-last_status = True 
-
-send("🚀 Дал я в штангу! Сорян, кожанные! Сейчас проверим. Пробуй команду 'статус'.")
+send("🛠 Чейто я кривой. Хотя, какой разраб, такой и Бот.  Пиши 'статус'!")
 
 while True:
-    grid, battery = get_data()
-    
-    if grid is not None and isinstance(grid, (int, float)):
-        if grid < 50 and last_status:
-            send(f"🔌 Свет ОТКЛЮЧИЛИ!\n🔋 Заряд: {battery}%")
-            last_status = False
-        elif grid > 180 and not last_status:
-            send(f"⚡️ Свет ДАЛИ!\n🔋 Заряд: {battery}%")
-            last_status = True
-    
     check_messages()
     time.sleep(5)
