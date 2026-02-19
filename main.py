@@ -1,6 +1,7 @@
 import os
-import requests
+import httpx
 import time
+import requests
 
 TOKEN = os.environ.get('BOT_TOKEN')
 CHAT_ID = os.environ.get('CHAT_ID')
@@ -13,44 +14,55 @@ def send(text):
                   json={"chat_id": CHAT_ID, "text": text})
 
 def get_data():
-    try:
-        session = requests.Session()
-        # НОВЫЙ АДРЕС: Используем поддомен 'server' вместо 'api'
-        auth_url = "http://server.dessmonitor.com/v1/public/login"
-        auth_data = {"loginName": USER, "password": PASS}
-        
-        auth_res = session.post(auth_url, json=auth_data, timeout=15).json()
-        token = auth_res.get('datList', {}).get('tokenId')
-        
-        if not token:
-            return "Ошибка логина (проверь данные в Render)", "❌"
+    # Используем httpx вместо requests для лучшей работы с HTTP/2
+    with httpx.Client(http2=True, timeout=20.0) as client:
+        try:
+            # 1. Логинимся через другой шлюз
+            auth_url = "http://server.dessmonitor.com/v1/public/login"
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15"
+            }
+            auth_payload = {"loginName": USER, "password": PASS}
+            
+            auth_res = client.post(auth_url, json=auth_payload, headers=headers)
+            
+            if auth_res.status_code != 200:
+                return f"Сервер ответил кодом {auth_res.status_code}", "❌"
+            
+            data_json = auth_res.json()
+            token = data_json.get('datList', {}).get('tokenId')
+            
+            if not token:
+                return "Логин не прошел. Проверь PV_LOGIN в Render", "🔑"
 
-        # Получаем данные через актуальный адрес
-        data_url = f"http://server.dessmonitor.com/v1/device/getDeviceData?sn={SN}&tokenId={token}"
-        data_res = session.get(data_url, timeout=15).json()
-        
-        datList = data_res.get('datList', {})
-        grid = datList.get('v_grid', '???')
-        battery = datList.get('soc', '??')
-        
-        return grid, battery
-    except Exception as e:
-        return f"Облако недоступно: {e}", "⚠️"
+            # 2. Получаем данные
+            data_url = f"http://server.dessmonitor.com/v1/device/getDeviceData?sn={SN}&tokenId={token}"
+            res = client.get(data_url, headers=headers)
+            
+            final_data = res.json().get('datList', {})
+            grid = final_data.get('v_grid', '???')
+            battery = final_data.get('soc', '??')
+            
+            return grid, battery
+            
+        except Exception as e:
+            return f"Тех. ошибка: {str(e)[:50]}", "⚠️"
 
 def check_messages():
     try:
-        updates = requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset=-1&timeout=1").json()
-        if updates.get('result'):
-            msg = updates['result'][0].get('message', {})
+        r = requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset=-1&timeout=1").json()
+        if r.get('result'):
+            msg = r['result'][0].get('message', {})
             if msg.get('text', '').lower() == "статус":
                 v, bat = get_data()
                 send(f"📊 Состояние дома:\n⚡️ Сеть: {v}V\n🔋 Батарея: {bat}%")
-                requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset={updates['result'][0]['update_id'] + 1}")
+                requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset={r['result'][0]['update_id'] + 1}")
     except:
         pass
 
-send("✅ Бот обновлен на новый сервер! Пробуй 'статус'.")
+send("🚀 Бот  перезапущен. Пробуй 'статус' еще раз!")
 
 while True:
     check_messages()
-    time.sleep(10)
+    time.sleep(5)
