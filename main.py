@@ -1,16 +1,16 @@
+import os
 import requests
 import time
 
-# --- ВСТАВЬ СВОИ ДАННЫЕ МЕЖДУ КАВЫЧЕК ---
-TOKEN = "8257997232:AAH2tUt_zQbBgbnG12U6jbD3KX807gWkAoY"
-CHAT_ID = "-5285339655"
-USER = "2774205@gmail.com"
-PASS = "020352vO"
+# Теперь данные берутся из секретных настроек сервера
+TOKEN = os.environ.get('BOT_TOKEN')
+CHAT_ID = os.environ.get('CHAT_ID')
+USER = os.environ.get('PV_LOGIN')
+PASS = os.environ.get('PV_PASS')
 
-# Данные твоего Wi-Fi модуля
+# Данные твоего модуля (уже в коде)
 SN = "E0A25C000919"
 KEY = "57B61F72"
-
 def send(text):
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                   json={"chat_id": CHAT_ID, "text": text})
